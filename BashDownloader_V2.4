@@ -1,0 +1,76 @@
+#!/bin/bash
+
+#echo $# $@
+###########################################################################################
+########### Lista de parámetros del script ################################################
+###########################################################################################
+#### Parámetro único: El archivo de texto en el que están todas las tercias de descarga  ##
+#### Esto es un archivo de texto que consta de tercias conformadas por el enlace de      ##
+#### descarga, la calidad con la que se va a descargar y el nombre del archivo resultan- ##
+#### te. En ese orden o sino el script no va a funcionar. No debe tener líneas vacías ni ##
+#### ningún contador ni nada. Sólo los datos crudos.                                     ##
+###########################################################################################
+
+arr_descargas=() #Este es el arreglo donde se volcará todo el contenido del archivo de texto del parámetro del script.
+mapfile -t arr_descargas < $1 # Se lee todo el contenido del archivo en el argumento y se pone su contenido línea por línea en el arreglo.
+i_indice_inicio=0  # Contador que lleva el control de ciclo en el loop while
+i_indice_limite=$((${#arr_descargas[@]} - 1));  # Entero que denota dónde debe finalizar el ciclo dentro del arreglo arr_descargas
+ > "Lo que salió mal.txt"; # Crea un archivo en donde se escribirá todo aquel animé que no sea posible descargar.
+
+fn_descargar() {
+
+    ##################################################################################################
+    ## Parámetro único: entero que indica el índice de ciclo dentro del arreglo arr_descargas al cual#
+    ## apunta la función. Se da por hecho que la información dentro del arreglo viene en triadas.    #
+    ##################################################################################################
+    set -x
+    echo "Este es el índice que se está procesando dentro de la función fn_descargar -> $1"
+    #echo "${arr_descargas[$1]}";
+    #echo "${arr_descargas[$(($1 + 2))]}-i.mp4";
+    #sleep 25;
+    ffmpeg -copyts -start_at_zero -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL \
+    -nostdin -i "${arr_descargas[$1]}" -c copy -y "${arr_descargas[$(($1 + 2))]}-i.mp4";
+    if [ $? -ne 0 ]; then
+
+	echo "${arr_descargas[$(($1 + 2))]}.mp4";
+        echo "La descarga del archivo ""${arr_descargas[$(($1 + 2))]}.mp4"" ha fallado!." >> "Lo que salió mal.txt";
+        return 0;
+
+    fi
+    ffmpeg -i "${arr_descargas[$(($1 + 2))]}-i.mp4" -b:v ${arr_descargas[$(($1 + 1))]}K -b:a 128K -ac 2 -c:v libx264 -c:a mp2 \
+    -nostdin -af volume=3 -y "${arr_descargas[$(($1 + 2))]}.mp4";
+    rm -v "${arr_descargas[$(($1 + 2))]}-i.mp4";
+    
+} # Fin de la función fn_descargar que realiza la iteración por el arreglo arr_descargas para realizar cada una de las descargas desde 
+# el indice de principio hasta el índice de final.
+if [ $((${#arr_descargas[@]}%3)) -ne 0 ]; then
+    return "Error -72: El número de líneas no es múltiplo de 3!"; # Si el fichero de descargas no tiene un número de líneas múltiplo de tres, para ejecución.
+fi
+#echo "Este es el total de iteraciones ${i_total_iteraciones}"
+#echo "Este es el total del arreglo principal ${#arr_descargas[@]}"
+#echo "Ese es el valor de i_indice_inicio -> $i_indice_inicio"
+#echo "Ese es el valor de i_indice_inicio -> $i_indice_limite"
+while [ $i_indice_inicio -lt $i_indice_limite ]
+do
+
+    echo "Se está procesando el índice -> $i_indice_inicio de ${#arr_descargas[@]}";
+    echo "Recuerda que se avanza de 12 en doce y el índice final es aproximado.";
+    sleep 3;
+    for ((j=0; j<3; j++))
+    do
+        idx=$((i_indice_inicio + j*3))
+
+        if (( idx <= i_indice_limite ))
+        then
+            fn_descargar "$idx" &
+        fi
+    done
+
+    wait 
+    #fn_descargar $i_indice_inicio ;
+    i_indice_inicio=$(($i_indice_inicio + 9)); #Los ciclos avanzan de doce en doce porque se procesan 4 descargas en paralelo
+
+done # Fin del while que recorre todo el arreglo del archivo de texto.
+wait -n;
+echo "El trabajo de descarga y conversión de archivos terminó a las... " $(date)
+echo "Ya todo está hecho!"
